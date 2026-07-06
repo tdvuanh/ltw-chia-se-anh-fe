@@ -196,6 +196,7 @@ export function useToggleLikeMutation() {
       queryClient.invalidateQueries({ queryKey: ['photo', String(variables.id)] });
       queryClient.invalidateQueries({ queryKey: ['searchPhotos'] });
       queryClient.invalidateQueries({ queryKey: ['favoritePhotos'] });
+      queryClient.invalidateQueries({ queryKey: ['userPhotos'] });
     },
   });
 

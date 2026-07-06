@@ -181,8 +181,11 @@ export function useLogoutMutation() {
     mutationFn: () => authService.logout(),
     onSuccess: () => {
       clearUser();
+      // Xóa sạch toàn bộ cache thay vì invalidateQueries(), vì invalidate sẽ
+      // kích hoạt refetch ngay cho mọi query đang active (kể cả query cần token)
+      // trong khi token đã bị xóa -> trả về lỗi 401 "Access token is missing".
+      queryClient.clear();
       queryClient.setQueryData(['currentUser'], null);
-      queryClient.invalidateQueries();
       toast.success('Đăng xuất thành công!', {
         description: 'Bạn đã đăng xuất khỏi tài khoản an toàn.',
       });
@@ -192,8 +195,8 @@ export function useLogoutMutation() {
       // Dù có lỗi server hay không, vẫn tiến hành dọn dẹp ở client
       localStorage.removeItem(API_CONFIG.TOKEN_STORAGE_KEY);
       clearUser();
+      queryClient.clear();
       queryClient.setQueryData(['currentUser'], null);
-      queryClient.invalidateQueries();
       toast.success('Đăng xuất thành công (Client-side)!', {
         description: 'Tài khoản của bạn đã được đăng xuất.',
       });

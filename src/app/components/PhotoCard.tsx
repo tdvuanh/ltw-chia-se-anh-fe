@@ -19,6 +19,7 @@ interface PhotoCardProps {
   tags?: string[];
   isLiked?: boolean;
   userId?: string | number;
+  status?: 'pending' | 'approved' | 'rejected';
   onLike?: () => void;
 }
 
@@ -35,6 +36,7 @@ export function PhotoCard({
   tags,
   isLiked = false,
   userId,
+  status,
   onLike,
 }: PhotoCardProps) {
   const { data: currentUser } = useCurrentUserQuery();
@@ -42,7 +44,12 @@ export function PhotoCard({
 
   return (
     <div className="group relative bg-white dark:bg-gray-800 rounded-lg overflow-hidden border dark:border-gray-700 hover:shadow-lg transition-shadow">
-      <Link to={`/photo/${id}`} className="block aspect-square overflow-hidden bg-gray-100 dark:bg-gray-700">
+      <Link to={`/photo/${id}`} className="block aspect-square overflow-hidden bg-gray-100 dark:bg-gray-700 relative">
+        {status === 'pending' && (
+          <span className="absolute top-2 right-2 z-10 px-2.5 py-1 bg-amber-500 text-white text-xs font-bold rounded-full shadow-md">
+            Đợi duyệt
+          </span>
+        )}
         <ImageWithFallback
           src={imageUrl}
           alt={title}

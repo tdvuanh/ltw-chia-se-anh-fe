@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router';
 import { PhotoCard } from '../components/PhotoCard';
-import { Settings, UserPlus, UserCheck, MapPin, Calendar, Link as LinkIcon, Loader2 } from 'lucide-react';
+import { Settings, UserPlus, UserCheck, MapPin, Calendar, Link as LinkIcon, Loader2, AlertCircle } from 'lucide-react';
 import {
   useCurrentUserQuery,
   useUserProfileQuery,
@@ -28,7 +28,12 @@ export default function ProfilePage() {
     (currentUser && profile && String(currentUser.username) === String(profile.username));
 
   // 3. Tải danh sách ảnh của người dùng này sau khi đã lấy được ID từ hồ sơ
-  const { data: photos = [], isLoading: isLoadingPhotos } = useUserPhotosQuery(profile?.id);
+  const {
+    data: photos = [],
+    isLoading: isLoadingPhotos,
+    error: photosError,
+    refetch: refetchPhotos,
+  } = useUserPhotosQuery(profile?.id);
 
   // 4. Các mutation tương tác Theo dõi và Thích ảnh
   const followMutation = useFollowUserMutation();
@@ -237,6 +242,18 @@ export default function ProfilePage() {
                 </div>
               ))}
             </div>
+          ) : photosError ? (
+            <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-lg border dark:border-gray-700 shadow-sm flex flex-col items-center gap-3">
+              <AlertCircle className="w-10 h-10 text-red-500" />
+              <p className="text-gray-700 dark:text-gray-300 font-medium">Không thể tải ảnh của người dùng này.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Vui lòng kiểm tra kết nối và thử lại.</p>
+              <button
+                onClick={() => refetchPhotos()}
+                className="mt-2 px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold text-sm transition-colors cursor-pointer"
+              >
+                Thử lại
+              </button>
+            </div>
           ) : photos.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {photos.map((photo) => (
@@ -254,6 +271,7 @@ export default function ProfilePage() {
                   views={photo.views}
                   tags={photo.tags}
                   isLiked={photo.isLiked}
+                  status={photo.status}
                   onLike={() => toggleLike(photo.id, !!photo.isLiked)}
                 />
               ))}
