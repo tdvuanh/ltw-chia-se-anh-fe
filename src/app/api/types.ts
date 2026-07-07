@@ -60,7 +60,8 @@ export interface Photo {
   likes_count: number;      // API.md
   comments?: number;        // UI mock compatibility
   comments_count: number;    // API.md
-  views?: number;
+  views?: number;           // UI mock compatibility
+  views_count?: number;     // API.md
   tags?: any[];             // Hỗ trợ cả mảng chuỗi ["nature"] và đối tượng [{"id":1,"name":"nature"}]
   isLiked?: boolean;        // UI mock compatibility
   is_liked?: boolean;       // API.md

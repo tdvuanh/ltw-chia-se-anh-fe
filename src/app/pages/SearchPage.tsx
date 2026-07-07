@@ -136,6 +136,7 @@ export default function SearchPage() {
                     description={photo.description}
                     username={photo.username}
                     userAvatar={photo.userAvatar}
+                    userId={photo.userId}
                     likes={photo.likes}
                     comments={photo.comments}
                     views={photo.views}
