@@ -13,24 +13,21 @@ export function usePhotosQuery(activeTab: 'latest' | 'popular' = 'latest') {
     queryKey: ['photos'],
     queryFn: async () => {
       const response = await photoService.getPhotos(1, 100);
-      return response;
+      return (response?.photos || []).map(transformPhoto);
     },
-    select: (response) => {
-      const rawPhotos = response?.photos || [];
-      const transformed = rawPhotos.map(transformPhoto);
-
+    select: (photos) => {
       // Sắp xếp động client-side tùy thuộc vào Tab hoạt động để tăng tốc UI mượt mà
       if (activeTab === 'popular') {
         // Thuật toán xu hướng: điểm = lượt thích / (giờ_tuổi + 2)^1.5
         // (kiểu Hacker News) → kết hợp độ phổ biến và độ mới, tránh ảnh cũ "đóng đinh" top
         const now = Date.now();
-        const score = (p: typeof transformed[number]) => {
+        const score = (p: typeof photos[number]) => {
           const ageHours = Math.max(0, (now - new Date(p.created_at).getTime()) / 3_600_000);
           return (p.likes + 1) / Math.pow(ageHours + 2, 1.5);
         };
-        return [...transformed].sort((a, b) => score(b) - score(a));
+        return [...photos].sort((a, b) => score(b) - score(a));
       } else {
-        return [...transformed].sort(
+        return [...photos].sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
       }
@@ -54,12 +51,14 @@ export function usePhotosQuery(activeTab: 'latest' | 'popular' = 'latest') {
 export function useExplorePhotosQuery(tab: 'trending' | 'fresh' | 'top' | 'editors' = 'trending') {
   const query = useQuery({
     queryKey: ['photos'],
-    queryFn: async () => photoService.getPhotos(1, 100),
-    select: (response) => {
-      const transformed = (response?.photos || []).map(transformPhoto);
-      const sorted = [...transformed];
+    queryFn: async () => {
+      const response = await photoService.getPhotos(1, 100);
+      return (response?.photos || []).map(transformPhoto);
+    },
+    select: (photos) => {
+      const sorted = [...photos];
       const now = Date.now();
-      const trendScore = (p: typeof transformed[number]) => {
+      const trendScore = (p: typeof photos[number]) => {
         const ageHours = Math.max(0, (now - new Date(p.created_at).getTime()) / 3_600_000);
         return (p.likes + 1) / Math.pow(ageHours + 2, 1.5);
       };
@@ -175,9 +174,18 @@ export function useDeleteCommentMutation() {
   });
 }
 
+const LIKE_AFFECTED_KEYS = [['photos'], ['photo'], ['searchPhotos'], ['favoritePhotos'], ['userPhotos']];
+
+function patchPhotoLike(photo: any, id: string | number, isLiked: boolean) {
+  if (!photo || String(photo.id) !== String(id)) return photo;
+  const nextLikes = Math.max(0, (photo.likes ?? photo.likes_count ?? 0) + (isLiked ? -1 : 1));
+  return { ...photo, isLiked: !isLiked, is_liked: !isLiked, likes: nextLikes, likes_count: nextLikes };
+}
+
 /**
  * Custom Hook quản lý hành vi Thích/Bỏ thích ảnh bất đồng bộ.
- * Tự động làm mới cache ảnh ['photos'] và chi tiết ảnh ['photo'] ngay khi tương tác thành công.
+ * Cập nhật lạc quan (optimistic) toàn bộ cache liên quan ngay khi bấm, rollback nếu request lỗi,
+ * và luôn làm mới lại từ server sau khi hoàn tất để đảm bảo đồng bộ tuyệt đối.
  */
 export function useToggleLikeMutation() {
   const queryClient = useQueryClient();
@@ -190,13 +198,30 @@ export function useToggleLikeMutation() {
         return photoService.likePhoto(id);
       }
     },
-    onSuccess: (data, variables) => {
-      // Làm mới dữ liệu ảnh toàn cục để cập nhật lượt thích mới từ server Vercel
-      queryClient.invalidateQueries({ queryKey: ['photos'] });
-      queryClient.invalidateQueries({ queryKey: ['photo', String(variables.id)] });
-      queryClient.invalidateQueries({ queryKey: ['searchPhotos'] });
-      queryClient.invalidateQueries({ queryKey: ['favoritePhotos'] });
-      queryClient.invalidateQueries({ queryKey: ['userPhotos'] });
+    onMutate: async ({ id, isLiked }) => {
+      await Promise.all(LIKE_AFFECTED_KEYS.map((queryKey) => queryClient.cancelQueries({ queryKey })));
+
+      const snapshot = LIKE_AFFECTED_KEYS.flatMap((queryKey) => queryClient.getQueriesData({ queryKey }));
+
+      LIKE_AFFECTED_KEYS.forEach((queryKey) => {
+        queryClient.setQueriesData({ queryKey }, (data: any) =>
+          Array.isArray(data) ? data.map((p) => patchPhotoLike(p, id, isLiked)) : patchPhotoLike(data, id, isLiked)
+        );
+      });
+
+      return { snapshot };
+    },
+    onError: (error: any, _variables, context) => {
+      context?.snapshot?.forEach(([queryKey, data]: any) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+      toast.error('Thao tác thất bại', {
+        description: error?.message || 'Không thể cập nhật lượt thích, vui lòng thử lại.',
+      });
+    },
+    onSettled: () => {
+      // Làm mới dữ liệu ảnh toàn cục để đồng bộ tuyệt đối với server sau khi lạc quan cập nhật
+      LIKE_AFFECTED_KEYS.forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
     },
   });
 
@@ -214,12 +239,9 @@ export function useSearchPhotosQuery(query: string) {
   return useQuery({
     queryKey: ['searchPhotos', query],
     queryFn: async () => {
-      if (!query.trim()) return { photos: [] };
-      return photoService.searchPhotos(query, 1, 100);
-    },
-    select: (response) => {
-      const rawPhotos = response?.photos || [];
-      return rawPhotos.map(transformPhoto);
+      if (!query.trim()) return [];
+      const response = await photoService.searchPhotos(query, 1, 100);
+      return (response?.photos || []).map(transformPhoto);
     },
     enabled: !!query.trim(),
   });
